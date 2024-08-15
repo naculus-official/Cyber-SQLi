@@ -19,34 +19,25 @@ code .
 ```
 - Open the terminal in Vscode
 - Run the following command
-> 1. Run SQL server
+> 1. Run PHP server
 ```bash
-docker-compose up -d
+http
+or
+phpserver
+or
+phps
 ```
-> 1. For SQL-injection
-```bash
-# For SQL-injection
-cd SQL-injection
-php -S localhost:8080
-```
-> 2. For SQL-injection-protection
-```
-cd Prevent-SQL-injection
-php -S localhost:8043
-```
-- Open the browser and type `localhost:8080` for SQL-injection and `localhost:8081` for SQL-injection-protection
-> [Prevent SQL injection](http://127.0.0.1:8081)  
-> [None prevent SQL injection](http://127.0.0.1:8043)  
-- You can see the output in the browser
+- Open the browser and type [localhost:8080](http://localhost:8080)
+- You can see the login form in the browser
 
 # SQL template
-> user
-> | id | username | password |
-> |----|----------|----------|
-> | 1  | root     | toor     |
-<!-- > | 2  | user     | user     |
-> | 3  | test     | test     |
-> | 4  | test1    | test1    | -->
+> user list
+> |    command    | username | password |         email        |
+> |---------------|----------|----------|----------------------|
+> | mysql -uroot  | root     |          |                      |
+> |               | admin    | admin    | admin@localhost      |
+> |               | jack     | minejack | inotgoing@hijack |
+> |               | user     | 123456   | user@localhost       |
 
 
 # build-in package
