@@ -87,6 +87,10 @@ protected:
                                            Type_handler_hybrid_field_type *th);
 public:
 
+  // Print an error message for a builtin-schema qualified function call
+  static void wrong_param_count_error(const LEX_CSTRING &schema_name,
+                                      const LEX_CSTRING &func_name);
+
   table_map not_null_tables_cache= 0;
 
   enum Functype { UNKNOWN_FUNC,EQ_FUNC,EQUAL_FUNC,NE_FUNC,LT_FUNC,LE_FUNC,
@@ -497,8 +501,7 @@ public:
   Functions whose returned field type is determined at fix_fields() time.
 */
 class Item_hybrid_func: public Item_func,
-                        public Type_handler_hybrid_field_type,
-                        public Type_extra_attributes
+                        public Type_handler_hybrid_field_type
 {
 protected:
   bool fix_attributes(Item **item, uint nitems);
@@ -513,14 +516,6 @@ public:
     :Item_func(thd, item), Type_handler_hybrid_field_type(item) { }
   const Type_handler *type_handler() const override
   { return Type_handler_hybrid_field_type::type_handler(); }
-  Type_extra_attributes *type_extra_attributes_addr() override
-  {
-    return this;
-  }
-  const Type_extra_attributes type_extra_attributes() const override
-  {
-    return *this;
-  }
   void fix_length_and_dec_long_or_longlong(uint char_length, bool unsigned_arg)
   {
     collation= DTCollation_numeric();
@@ -4252,8 +4247,7 @@ public:
   }
   bool fix_length_and_dec(THD *thd) override
   {
-    if (table_list->table)
-      unsigned_flag= table_list->table->s->sequence->is_unsigned;
+    unsigned_flag= 0;
     max_length= MAX_BIGINT_WIDTH;
     set_maybe_null();             /* In case of errors */
     return FALSE;
@@ -4307,11 +4301,11 @@ public:
 
 class Item_func_setval :public Item_func_nextval
 {
-  Longlong_hybrid nextval;
+  longlong nextval;
   ulonglong round;
   bool is_used;
 public:
-  Item_func_setval(THD *thd, TABLE_LIST *table_list_arg, Longlong_hybrid nextval_arg,
+  Item_func_setval(THD *thd, TABLE_LIST *table_list_arg, longlong nextval_arg,
                    ulonglong round_arg, bool is_used_arg)
     : Item_func_nextval(thd, table_list_arg),
     nextval(nextval_arg), round(round_arg), is_used(is_used_arg)

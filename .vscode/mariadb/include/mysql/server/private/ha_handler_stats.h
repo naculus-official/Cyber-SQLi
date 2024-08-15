@@ -43,19 +43,9 @@ public:
 
   /* Time spent in engine, in timer_tracker_frequency() units */
   ulonglong engine_time;
-
-  /*
-    Index Condition Pushdown: number of times condition was checked for index
-    tuple
-  */
-  ulonglong icp_attempts;
-  /*
-    Index Condition Pushdown: number of times condition check evaluated to TRUE
-  */
-  ulonglong icp_match;
   uint      active;                      /* <> 0 if status has to be updated */
 #define first_stat pages_accessed
-#define last_stat  icp_match
+#define last_stat  engine_time
   inline void reset()
   {
     bzero((void*) this, sizeof(*this));

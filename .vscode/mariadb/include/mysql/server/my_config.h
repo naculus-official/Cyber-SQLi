@@ -519,29 +519,29 @@
 #define WITH_ARIA_STORAGE_ENGINE 1
 #define USE_ARIA_FOR_TMP_TABLES 1
 
-#define DEFAULT_MYSQL_HOME "C:/Program Files/MariaDB 11.5"
+#define DEFAULT_MYSQL_HOME "C:/Program Files/MariaDB 11.4"
 #define SHAREDIR "share"
-#define DEFAULT_BASEDIR "C:/Program Files/MariaDB 11.5"
-#define MYSQL_DATADIR "C:/Program Files/MariaDB 11.5/data"
-#define DEFAULT_CHARSET_HOME "C:/Program Files/MariaDB 11.5"
-#define PLUGINDIR "C:/Program Files/MariaDB 11.5/lib/plugin"
+#define DEFAULT_BASEDIR "C:/Program Files/MariaDB 11.4"
+#define MYSQL_DATADIR "C:/Program Files/MariaDB 11.4/data"
+#define DEFAULT_CHARSET_HOME "C:/Program Files/MariaDB 11.4"
+#define PLUGINDIR "C:/Program Files/MariaDB 11.4/lib/plugin"
 /* #undef DEFAULT_SYSCONFDIR */
 #define DEFAULT_TMPDIR P_tmpdir
 
 /* #undef SO_EXT */
 
 #define MYSQL_VERSION_MAJOR 11
-#define MYSQL_VERSION_MINOR 5
-#define MYSQL_VERSION_PATCH 2
+#define MYSQL_VERSION_MINOR 4
+#define MYSQL_VERSION_PATCH 3
 #define MYSQL_VERSION_EXTRA ""
 
 #define PACKAGE "mysql"
 #define PACKAGE_BUGREPORT ""
 #define PACKAGE_NAME "MySQL Server"
-#define PACKAGE_STRING "MySQL Server 11.5.2"
+#define PACKAGE_STRING "MySQL Server 11.4.3"
 #define PACKAGE_TARNAME "mysql"
-#define PACKAGE_VERSION "11.5.2"
-#define VERSION "11.5.2"
+#define PACKAGE_VERSION "11.4.3"
+#define VERSION "11.4.3"
 #define PROTOCOL_VERSION 10
 #define PCRE2_CODE_UNIT_WIDTH 8
 

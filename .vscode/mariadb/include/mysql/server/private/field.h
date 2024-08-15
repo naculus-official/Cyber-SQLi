@@ -82,8 +82,6 @@ enum enum_conv_type
   CONV_TYPE_IMPOSSIBLE
 };
 
-/* Old 32 bit timestamp */
-extern const uchar timestamp_old_bytes[7];
 
 class Conv_param
 {
@@ -601,7 +599,7 @@ public:
   bool automatic_name;
   bool if_not_exists;
   Item *expr;
-  Lex_ident_column name;                        /* Name of constraint */
+  Lex_ident name;                               /* Name of constraint */
   /* see VCOL_* (VCOL_FIELD_REF, ...) */
   uint flags;
 
@@ -673,8 +671,8 @@ public:
      Retrieve the field metadata for fields.
   */
    CHARSET_INFO *m_cs; // NULL if not relevant
-   const TYPELIB *m_enum_typelib; // NULL if not relevant
-   const TYPELIB *m_set_typelib; // NULL if not relevant
+   TYPELIB *m_enum_typelib; // NULL if not relevant
+   TYPELIB *m_set_typelib; // NULL if not relevant
    binlog_sign_t m_signedness;
    uint16 m_metadata;
    uint8 m_metadata_size;
@@ -719,7 +717,7 @@ public:
    Binlog_type_info(uchar type_code, uint16 metadata,
                    uint8 metadata_size,
                    CHARSET_INFO *cs,
-                   const TYPELIB *t_enum, const TYPELIB *t_set)
+                   TYPELIB *t_enum, TYPELIB *t_set)
     :m_cs(cs),
      m_enum_typelib(t_enum),
      m_set_typelib(t_set),
@@ -776,7 +774,6 @@ protected:
   static void do_field_temporal(const Copy_field *copy, date_mode_t fuzzydate);
   static void do_field_datetime(const Copy_field *copy);
   static void do_field_timestamp(const Copy_field *copy);
-  static void do_field_versioned_timestamp(const Copy_field *copy);
   static void do_field_decimal(const Copy_field *copy);
 public:
   static void *operator new(size_t size, MEM_ROOT *mem_root) throw ()
@@ -815,7 +812,7 @@ public:
   TABLE *table;                                 // Pointer for table
   TABLE *orig_table;                            // Pointer to original table
   const char * const *table_name;               // Pointer to alias in TABLE
-  Lex_ident_column field_name;
+  LEX_CSTRING field_name;
   LEX_CSTRING comment;
   /** reference to the list of options or NULL */
   engine_option_value *option_list;
@@ -972,13 +969,11 @@ public:
   virtual int  store(longlong nr, bool unsigned_val)=0;
   virtual int  store_decimal(const my_decimal *d)=0;
   virtual int  store_time_dec(const MYSQL_TIME *ltime, uint dec);
-  virtual int  store_timestamp_dec(const my_timeval &ts, uint dec);
+  virtual int  store_timestamp_dec(const timeval &ts, uint dec);
   int store_timestamp(my_time_t timestamp, ulong sec_part)
   {
-    struct my_timeval tmp;
-    tmp.tv_sec=  (longlong) timestamp;
-    tmp.tv_usec= (long) sec_part;
-    return store_timestamp_dec(tmp, TIME_SECOND_PART_DIGITS);
+    return store_timestamp_dec(Timeval(timestamp, sec_part),
+                               TIME_SECOND_PART_DIGITS);
   }
   /**
     Store a value represented in native format
@@ -1004,14 +999,6 @@ public:
   {
     DBUG_ASSERT(ls.length < UINT_MAX32);
     return store(ls.str, (uint) ls.length, cs);
-  }
-  int store_ident(const Lex_ident_ci &str)
-  {
-    return store(str, str.charset_info());
-  }
-  int store_ident(const Lex_ident_fs &str)
-  {
-    return store(str, str.charset_info());
   }
 
   /*
@@ -1107,14 +1094,6 @@ public:
     @retval                true  (EOM)
   */
   bool val_str_nopad(MEM_ROOT *mem_root, LEX_CSTRING *to);
-  /*
-    Return the field value as a LEX_CSTRING.
-  */
-  Lex_cstring val_lex_cstring(String *buffer)
-  {
-    String *res= val_str(buffer);
-    return res ? res->to_lex_cstring() : Lex_cstring();
-  }
   fast_field_copier get_fast_field_copier(const Field *from);
   /*
    str_needs_quotes() returns TRUE if the value returned by val_str() needs
@@ -1675,10 +1654,7 @@ public:
   virtual bool get_date(MYSQL_TIME *ltime, date_mode_t fuzzydate);
   virtual longlong val_datetime_packed(THD *thd);
   virtual longlong val_time_packed(THD *thd);
-  virtual const Type_extra_attributes type_extra_attributes() const
-  {
-    return Type_extra_attributes();
-  }
+  virtual const TYPELIB *get_typelib() const { return NULL; }
   virtual CHARSET_INFO *charset() const= 0;
   /* returns TRUE if the new charset differs. */
   virtual void change_charset(const DTCollation &new_cs) {}
@@ -3241,10 +3217,10 @@ class Field_timestamp :public Field_temporal {
 protected:
   int store_TIME_with_warning(THD *, const Datetime *,
                               const ErrConv *, int warn);
-  virtual void store_TIMEVAL(const my_timeval &tv)= 0;
+  virtual void store_TIMEVAL(const timeval &tv)= 0;
   void store_TIMESTAMP(const Timestamp &ts)
   {
-    store_TIMEVAL(ts);
+    store_TIMEVAL(ts.tv());
   }
   int zero_time_stored_return_code_with_warning();
 public:
@@ -3265,7 +3241,7 @@ public:
   int  store(longlong nr, bool unsigned_val) override;
   int  store_time_dec(const MYSQL_TIME *ltime, uint dec) override;
   int  store_decimal(const my_decimal *) override;
-  int  store_timestamp_dec(const my_timeval &ts, uint dec) override;
+  int  store_timestamp_dec(const timeval &ts, uint dec) override;
   int  save_in_field(Field *to) override;
   longlong val_int() override;
   String *val_str(String *, String *) override;
@@ -3295,7 +3271,7 @@ public:
 
 class Field_timestamp0 :public Field_timestamp
 {
-  void store_TIMEVAL(const my_timeval &tv) override
+  void store_TIMEVAL(const timeval &tv) override
   {
     int4store(ptr, tv.tv_sec);
   }
@@ -3387,7 +3363,7 @@ class Field_timestamp_hires :public Field_timestamp_with_dec {
   {
     return Type_handler_timestamp::sec_part_bytes(dec);
   }
-  void store_TIMEVAL(const my_timeval &tv) override;
+  void store_TIMEVAL(const timeval &tv) override;
 public:
   Field_timestamp_hires(uchar *ptr_arg,
                         uchar *null_ptr_arg, uchar null_bit_arg,
@@ -3416,7 +3392,7 @@ public:
   TIMESTAMP(0..6) - MySQL56 version
 */
 class Field_timestampf :public Field_timestamp_with_dec {
-  void store_TIMEVAL(const my_timeval &tv) override;
+  void store_TIMEVAL(const timeval &tv) override;
 public:
   Field_timestampf(uchar *ptr_arg,
                    uchar *null_ptr_arg, uchar null_bit_arg,
@@ -4796,9 +4772,7 @@ private:
 };
 
 
-class Field_enum :public Field_str,
-                  public Type_typelib_attributes
-{
+class Field_enum :public Field_str {
   static void do_field_enum(const Copy_field *copy_field);
   longlong val_int(const uchar *) const;
   Data_type_compatibility can_optimize_range_or_keypart_ref(
@@ -4807,6 +4781,7 @@ class Field_enum :public Field_str,
 protected:
   uint packlength;
 public:
+  const TYPELIB *typelib;
   Field_enum(uchar *ptr_arg, uint32 len_arg, uchar *null_ptr_arg,
              uchar null_bit_arg,
              enum utype unireg_check_arg, const LEX_CSTRING *field_name_arg,
@@ -4815,8 +4790,7 @@ public:
              const DTCollation &collation)
     :Field_str(ptr_arg, len_arg, null_ptr_arg, null_bit_arg,
 	       unireg_check_arg, field_name_arg, collation),
-     Type_typelib_attributes(typelib_arg),
-    packlength(packlength_arg)
+    packlength(packlength_arg),typelib(typelib_arg)
   {
       flags|=ENUM_FLAG;
   }
@@ -4889,10 +4863,8 @@ public:
   /* enum and set are sorted as integers */
   CHARSET_INFO *sort_charset() const override { return &my_charset_bin; }
   decimal_digits_t decimals() const override { return 0; }
-  const Type_extra_attributes type_extra_attributes() const override
-  {
-    return Type_extra_attributes(m_typelib);
-  }
+  const TYPELIB *get_typelib() const override { return typelib; }
+
   uchar *pack(uchar *to, const uchar *from, uint max_length) override;
   const uchar *unpack(uchar *to, const uchar *from, const uchar *from_end,
                       uint param_data) override;
@@ -5220,7 +5192,7 @@ public:
 
 extern const LEX_CSTRING null_clex_str;
 
-class Column_definition_attributes: public Type_extra_attributes
+class Column_definition_attributes
 {
 public:
   /*
@@ -5228,13 +5200,17 @@ public:
     max number of characters.
   */
   ulonglong length;
+  const TYPELIB *interval;
   CHARSET_INFO *charset;
+  uint32 srid;
   uint32 pack_flag;
   decimal_digits_t decimals;
   Field::utype unireg_check;
   Column_definition_attributes()
    :length(0),
+    interval(NULL),
     charset(&my_charset_bin),
+    srid(0),
     pack_flag(0),
     decimals(0),
     unireg_check(Field::NONE)
@@ -5305,7 +5281,7 @@ class Column_definition: public Sql_alloc,
     const char **pos;
     uint *len;
     *max_length= *tot_length= 0;
-    for (pos= typelib()->type_names, len= typelib()->type_lengths;
+    for (pos= interval->type_names, len= interval->type_lengths;
          *pos ; pos++, len++)
     {
       size_t length= charset->numchars(*pos, *pos + *len);
@@ -5319,7 +5295,7 @@ class Column_definition: public Sql_alloc,
   const Type_handler *field_type() const; // Prevent using this
   Compression_method *compression_method_ptr;
 public:
-  Lex_ident_column field_name;
+  Lex_ident   field_name;
   LEX_CSTRING comment;			// Comment for field
   enum enum_column_versioning
   {
@@ -5430,7 +5406,7 @@ public:
     if (real_field_type() == MYSQL_TYPE_SET)
     {
       calculate_interval_lengths(&dummy, &field_length);
-      length= field_length + (typelib()->count - 1);
+      length= field_length + (interval->count - 1);
     }
     else /* MYSQL_TYPE_ENUM */
     {
@@ -5534,14 +5510,15 @@ public:
   void set_type(const Column_definition &other)
   {
     set_handler(other.type_handler());
-    Type_extra_attributes::operator=(other);
     length= other.length;
     char_length= other.char_length;
     decimals= other.decimals;
     flags= other.flags;
     pack_length= other.pack_length;
     unireg_check= other.unireg_check;
+    interval= other.interval;
     charset= other.charset;
+    srid= other.srid;
     pack_flag= other.pack_flag;
   }
 
@@ -5551,6 +5528,10 @@ public:
     *this= *def;
   }
   bool set_compressed(const char *method);
+  bool set_compressed_deprecated(THD *thd, const char *method);
+  bool set_compressed_deprecated_column_attribute(THD *thd,
+                                                  const char *pos,
+                                                  const char *method);
   void set_compression_method(Compression_method *compression_method_arg)
   { compression_method_ptr= compression_method_arg; }
   Compression_method *compression_method() const
@@ -5742,15 +5723,15 @@ public:
 inline bool Row_definition_list::eq_name(const Spvar_definition *def,
                                          const LEX_CSTRING *name) const
 {
-  return def->field_name.streq(*name);
+  return def->field_name.length == name->length && my_strcasecmp(system_charset_info, def->field_name.str, name->str) == 0;
 }
 
 
 class Create_field :public Column_definition
 {
 public:
-  Lex_ident_column change;		// Old column name if column is renamed by ALTER
-  Lex_ident_column after;		// Put column after this one
+  LEX_CSTRING change;			// Old column name if column is renamed by ALTER
+  LEX_CSTRING after;			// Put column after this one
   Field *field;				// For alter table
   const TYPELIB *save_interval;         // Temporary copy for the above
                                         // Used only for UCS2 intervals
@@ -5765,13 +5746,17 @@ public:
     Column_definition(),
     field(0), option_struct(NULL),
     create_if_not_exists(false)
-  { }
+  {
+    change= after= null_clex_str;
+  }
   Create_field(THD *thd, Field *old_field, Field *orig_field):
     Column_definition(thd, old_field, orig_field),
     change(old_field->field_name),
     field(old_field), option_struct(old_field->option_struct),
     create_if_not_exists(false)
-  { }
+  {
+    after= null_clex_str;
+  }
   /* Used to make a clone of this object for ALTER/CREATE TABLE */
   Create_field *clone(MEM_ROOT *mem_root) const;
   static void upgrade_data_types(List<Create_field> &list)
@@ -5932,7 +5917,7 @@ enum_field_types get_blob_type_from_length(ulong length);
 int set_field_to_null(Field *field);
 int set_field_to_null_with_conversions(Field *field, bool no_conversions);
 int convert_null_to_field_value_or_error(Field *field);
-bool check_expression(Virtual_column_info *vcol, const Lex_ident_column &name,
+bool check_expression(Virtual_column_info *vcol, const LEX_CSTRING *name,
                       enum_vcol_info_type type, Alter_info *alter_info= NULL);
 
 /*

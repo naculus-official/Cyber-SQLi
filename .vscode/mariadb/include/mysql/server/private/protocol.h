@@ -34,12 +34,6 @@ struct TABLE_LIST;
 typedef struct st_mysql_field MYSQL_FIELD;
 typedef struct st_mysql_rows MYSQL_ROWS;
 
-struct unit_results_desc
-{
-  ulonglong generated_id;
-  ulonglong affected_rows;
-};
-
 class Protocol
 {
 protected:

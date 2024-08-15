@@ -2480,7 +2480,7 @@ public:
   Datetime(THD *thd, int *warn, const my_decimal *d, date_mode_t fuzzydate)
    :Datetime(thd, warn, Sec9(d), fuzzydate)
   { }
-  Datetime(THD *thd, const my_timeval &tv);
+  Datetime(THD *thd, const timeval &tv);
 
   Datetime(THD *thd, Item *item, date_mode_t fuzzydate, uint dec)
    :Datetime(thd, item, fuzzydate)
@@ -2765,7 +2765,7 @@ public:
 };
 
 
-class Timestamp: public Timeval
+class Timestamp: protected Timeval
 {
   static uint binary_length_to_precision(uint length);
 protected:
@@ -2798,11 +2798,12 @@ public:
   Timestamp(my_time_t timestamp, ulong sec_part)
    :Timeval(timestamp, sec_part)
   { }
-  explicit Timestamp(const my_timeval &tv)
+  explicit Timestamp(const timeval &tv)
    :Timeval(tv)
   { }
   explicit Timestamp(const Native &native);
   Timestamp(THD *thd, const MYSQL_TIME *ltime, uint *error_code);
+  const struct timeval &tv() const { return *this; }
   int cmp(const Timestamp &other) const
   {
     return tv_sec < other.tv_sec   ? -1 :
@@ -2933,7 +2934,7 @@ public:
   {
     return is_zero_datetime() ?
            Datetime::zero() :
-           Datetime(thd, Timestamp(*this));
+           Datetime(thd, Timestamp(*this).tv());
   }
   bool is_zero_datetime() const
   {
@@ -3018,46 +3019,13 @@ static inline my_repertoire_t &operator|=(my_repertoire_t &a,
 
 enum Derivation
 {
-  DERIVATION_IGNORABLE= 7, // Explicit NULL
-
-  /*
-    Explicit or implicit conversion from numeric/temporal data to string:
-    - Numbers/temporals in string context
-    - Numeric user variables
-    - CAST(numeric_or_temporal_expr AS CHAR)
-  */
-  DERIVATION_NUMERIC= 6,
-
-  /*
-    - String literals
-    - String user variables
-  */
-  DERIVATION_COERCIBLE= 5,
-
-  /*
-    String cast and conversion functions:
-    - BINARY(expr)
-    - CAST(string_expr AS CHAR)
-    - CONVERT(expr USING cs)
-  */
-  DERIVATION_CAST= 4,
-
-  /*
-    utf8 metadata functions:
-    - DATABASE()
-    - CURRENT_ROLE()
-    - USER()
-  */
+  DERIVATION_IGNORABLE= 6,
+  DERIVATION_NUMERIC= 5,
+  DERIVATION_COERCIBLE= 4,
   DERIVATION_SYSCONST= 3,
-
-  /*
-    - Table columns
-    - SP variables
-    - BINARY(expr) and CAST(expr AS BINARY)
-  */
   DERIVATION_IMPLICIT= 2,
-  DERIVATION_NONE= 1,      // A mix (e.g. CONCAT) of two differrent collations
-  DERIVATION_EXPLICIT= 0   // An explicit COLLATE clause
+  DERIVATION_NONE= 1,
+  DERIVATION_EXPLICIT= 0
 };
 
 
@@ -3111,12 +3079,6 @@ public:
     derivation(derivation_arg),
     repertoire(repertoire_arg)
   { }
-  static DTCollation string_typecast(CHARSET_INFO *collation_arg)
-  {
-    return DTCollation(collation_arg,
-                       collation_arg == &my_charset_bin ?
-                       DERIVATION_IMPLICIT : DERIVATION_CAST);
-  }
   void set(const DTCollation &dt)
   {
     *this= dt;
@@ -3162,7 +3124,6 @@ public:
       case DERIVATION_NUMERIC:   return "NUMERIC";
       case DERIVATION_IGNORABLE: return "IGNORABLE";
       case DERIVATION_COERCIBLE: return "COERCIBLE";
-      case DERIVATION_CAST:      return "CAST";
       case DERIVATION_IMPLICIT:  return "IMPLICIT";
       case DERIVATION_SYSCONST:  return "SYSCONST";
       case DERIVATION_EXPLICIT:  return "EXPLICIT";
@@ -3451,98 +3412,6 @@ public:
 };
 
 
-/*
-  A container for very specific data type attributes.
-  For now it prodives space for:
-  - one const pointer attributes
-  - one unt32 attribute
-*/
-class Type_extra_attributes
-{
-  const void *m_attr_const_void_ptr[1];
-  uint32 m_attr_uint32[1];
-public:
-  Type_extra_attributes()
-   :m_attr_const_void_ptr{0},
-    m_attr_uint32{0}
-  { }
-  Type_extra_attributes(const void *const_void_ptr)
-   :m_attr_const_void_ptr{const_void_ptr},
-    m_attr_uint32{0}
-  { }
-  /*
-    Generic const pointer attributes.
-    The ENUM and SET data types store TYPELIB information here.
-  */
-  Type_extra_attributes & set_attr_const_void_ptr(uint i, const void *value)
-  {
-    m_attr_const_void_ptr[i]= value;
-    return *this;
-  }
-  const void *get_attr_const_void_ptr(uint i) const
-  {
-    return m_attr_const_void_ptr[i];
-  }
-  /*
-    Generic uint32 attributes.
-    The GEOMETRY data type stores SRID here.
-  */
-  Type_extra_attributes & set_attr_uint32(uint i, uint32 value)
-  {
-    m_attr_uint32[i]= value;
-    return *this;
-  }
-  uint32 get_attr_uint32(uint i) const
-  {
-    return m_attr_uint32[i];
-  }
-  /*
-    Helper methods for TYPELIB attributes.
-    They are mostly needed to simplify the code
-    in Column_definition_attributes and Column_definition methods.
-    Eventually we should move this code into Type_typelib_attributes
-    and remove these methods.
-  */
-  Type_extra_attributes & set_typelib(const TYPELIB *typelib)
-  {
-    return set_attr_const_void_ptr(0, typelib);
-  }
-  const TYPELIB *typelib() const
-  {
-    return (const TYPELIB*) get_attr_const_void_ptr(0);
-  }
-};
-
-
-class Type_typelib_attributes
-{
-protected:
-  const TYPELIB *m_typelib;
-public:
-  Type_typelib_attributes()
-   :m_typelib(nullptr)
-  { }
-  Type_typelib_attributes(const TYPELIB *typelib)
-   :m_typelib(typelib)
-  { }
-  Type_typelib_attributes(const Type_extra_attributes &eattr)
-   :m_typelib((const TYPELIB *) eattr.get_attr_const_void_ptr(0))
-  { }
-  void store(Type_extra_attributes *to) const
-  {
-    to->set_attr_const_void_ptr(0, m_typelib);
-  }
-  const TYPELIB *typelib() const
-  {
-    return m_typelib;
-  }
-  void set_typelib(const TYPELIB *typelib)
-  {
-    m_typelib= typelib;
-  }
-};
-
-
 class Type_all_attributes: public Type_std_attributes
 {
 public:
@@ -3552,8 +3421,8 @@ public:
   virtual void set_type_maybe_null(bool maybe_null_arg)= 0;
   // Returns total number of decimal digits
   virtual decimal_digits_t decimal_precision() const= 0;
-  virtual Type_extra_attributes *type_extra_attributes_addr() = 0;
-  virtual const Type_extra_attributes type_extra_attributes() const= 0;
+  virtual const TYPELIB *get_typelib() const= 0;
+  virtual void set_typelib(const TYPELIB *typelib)= 0;
 };
 
 

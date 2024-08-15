@@ -180,8 +180,7 @@ bool fill_record_n_invoke_before_triggers(THD *thd, TABLE *table,
                                           bool ignore_errors,
                                           enum trg_event_type event);
 bool insert_fields(THD *thd, Name_resolution_context *context,
-                   const Lex_ident_db &db_name,
-                   const Lex_ident_table &table_name,
+                   const LEX_CSTRING &db_name, const LEX_CSTRING &table_name,
                    List_iterator<Item> *it, bool any_privileges,
                    uint *hidden_bit_fields, bool returning_field);
 void make_leaves_list(THD *thd, List<TABLE_LIST> &list, TABLE_LIST *tables,
@@ -208,7 +207,7 @@ find_field_in_tables(THD *thd, Item_ident *item,
                      bool check_privileges, bool register_tree_change);
 Field *
 find_field_in_table_ref(THD *thd, TABLE_LIST *table_list,
-                        const Lex_ident_column &name,
+                        const char *name, size_t length,
                         const char *item_name, const char *db_name,
                         const char *table_name,
                         ignored_tables_list_t ignored_tables,
@@ -216,10 +215,10 @@ find_field_in_table_ref(THD *thd, TABLE_LIST *table_list,
                         field_index_t *cached_field_index_ptr,
                         bool register_tree_change, TABLE_LIST **actual_table);
 Field *
-find_field_in_table(THD *thd, TABLE *table, const Lex_ident_column &name,
+find_field_in_table(THD *thd, TABLE *table, const char *name, size_t length,
                     bool allow_rowid, field_index_t *cached_field_index_ptr);
 Field *
-find_field_in_table_sef(TABLE *table, const Lex_ident_column &name);
+find_field_in_table_sef(TABLE *table, const char *name);
 Item ** find_item_in_list(Item *item, List<Item> &items, uint *counter,
                           find_item_error_report_type report_error,
                           enum_resolution_type *resolution, uint limit= 0);
@@ -374,8 +373,8 @@ inline void setup_table_map(TABLE *table, TABLE_LIST *table_list, uint tablenr)
 }
 
 inline TABLE_LIST *find_table_in_global_list(TABLE_LIST *table,
-                                             const LEX_CSTRING *db_name,
-                                             const LEX_CSTRING *table_name)
+                                             LEX_CSTRING *db_name,
+                                             LEX_CSTRING *table_name)
 {
   return find_table_in_list(table, &TABLE_LIST::next_global,
                             db_name, table_name);

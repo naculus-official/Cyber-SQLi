@@ -1051,9 +1051,9 @@ public:
   */
   String str_value;
 
-  Lex_ident_column name;                  /* Name of item */
+  LEX_CSTRING name;			/* Name of item */
   /* Original item name (if it was renamed)*/
-  Lex_ident_column orig_name;
+  LEX_CSTRING orig_name;
 
   /* All common bool variables for an Item is stored here */
   item_base_t base_flags;
@@ -1147,7 +1147,7 @@ public:
     set_name(thd, str->ptr(), str->length(), str->charset());
   }
   void set_name(THD *thd, const LEX_CSTRING &str,
-                CHARSET_INFO *cs= Lex_ident_column::charset_info())
+                CHARSET_INFO *cs= system_charset_info)
   {
     set_name(thd, str.str, str.length, cs);
   }
@@ -1329,14 +1329,7 @@ public:
   {
     return type_handler()->max_display_length(this);
   }
-  const Type_extra_attributes type_extra_attributes() const override
-  {
-    return Type_extra_attributes();
-  }
-  Type_extra_attributes *type_extra_attributes_addr() override
-  {
-    return nullptr;
-  }
+  const TYPELIB *get_typelib() const override { return NULL; }
   /* optimized setting of maybe_null without jumps. Minimizes code size */
   inline void set_maybe_null(bool maybe_null_arg)
   {
@@ -1374,6 +1367,11 @@ public:
   bool is_top_level_item() const
   { return (bool) (base_flags & item_base_t::AT_TOP_LEVEL); }
 
+  void set_typelib(const TYPELIB *typelib) override
+  {
+    // Non-field Items (e.g. hybrid functions) never have ENUM/SET types yet.
+    DBUG_ASSERT(0);
+  }
   Item_cache* get_cache(THD *thd) const
   {
     return type_handler()->Item_get_cache(thd, this);
@@ -2606,9 +2604,9 @@ public:
     return needs_charset_converter(1, tocs);
   }
   Item *const_charset_converter(THD *thd, CHARSET_INFO *tocs, bool lossless,
-                                const Lex_ident_routine &func_name);
+                                const char *func_name);
   Item *const_charset_converter(THD *thd, CHARSET_INFO *tocs, bool lossless)
-  { return const_charset_converter(thd, tocs, lossless, Lex_ident_routine()); }
+  { return const_charset_converter(thd, tocs, lossless, NULL); }
   void delete_self()
   {
     cleanup();
@@ -3589,17 +3587,17 @@ protected:
     updated during fix_fields() to values from Field object and life-time 
     of those is shorter than life-time of Item_field.
   */
-  Lex_ident_db orig_db_name;
-  Lex_ident_table orig_table_name;
-  Lex_ident_column orig_field_name;
+  Lex_table_name orig_db_name;
+  Lex_table_name orig_table_name;
+  Lex_ident      orig_field_name;
 
   void undeclared_spvar_error() const;
 
 public:
   Name_resolution_context *context;
-  Lex_ident_db db_name;
-  Lex_ident_table table_name;
-  Lex_ident_column field_name;
+  Lex_table_name db_name;
+  Lex_table_name table_name;
+  Lex_ident      field_name;
   /*
     Cached pointer to table which contains this field, used for the same reason
     by prep. stmt. too in case then we have not-fully qualified field.
@@ -3779,10 +3777,7 @@ public:
   Field *create_tmp_field_ex(MEM_ROOT *root,
                              TABLE *table, Tmp_field_src *src,
                              const Tmp_field_param *param) override;
-  const Type_extra_attributes type_extra_attributes() const override
-  {
-    return field->type_extra_attributes();
-  }
+  const TYPELIB *get_typelib() const override { return field->get_typelib(); }
   enum_monotonicity_info get_monotonicity_info() const override
   {
     return MONOTONIC_STRICT_INCREASING;
@@ -4751,15 +4746,15 @@ public:
 
 class Item_static_float_func :public Item_float
 {
-  const Lex_ident_routine func_name;
+  const char *func_name;
 public:
-  Item_static_float_func(THD *thd, const Lex_ident_routine &str, double val_arg,
+  Item_static_float_func(THD *thd, const char *str, double val_arg,
                          uint decimal_par, uint length):
     Item_float(thd, NullS, val_arg, decimal_par, length), func_name(str)
   {}
   void print(String *str, enum_query_type) override
   {
-    str->append(func_name);
+    str->append(func_name, strlen(func_name));
   }
   Item *safe_charset_converter(THD *thd, CHARSET_INFO *tocs) override
   {
@@ -4788,7 +4783,7 @@ protected:
   {
     collation.set(cs, dv);
     max_length= 0;
-    set_name(thd, NULL, 0, Lex_ident_column::charset_info());
+    set_name(thd, NULL, 0, system_charset_info);
     decimals= NOT_FIXED_DEC;
   }
 public:
@@ -4796,7 +4791,7 @@ public:
    :Item_literal(thd)
   {
     collation.set(csi, DERIVATION_COERCIBLE);
-    set_name(thd, NULL, 0, Lex_ident_column::charset_info());
+    set_name(thd, NULL, 0, system_charset_info);
     decimals= NOT_FIXED_DEC;
     str_value.copy(str_arg, length_arg, csi);
     max_length= str_value.numchars() * csi->mbmaxlen;
@@ -4936,10 +4931,10 @@ class Item_string_sys :public Item_string
 {
 public:
   Item_string_sys(THD *thd, const char *str, uint length):
-    Item_string(thd, str, length, system_charset_info_for_i_s)
+    Item_string(thd, str, length, system_charset_info)
   { }
   Item_string_sys(THD *thd, const char *str):
-    Item_string(thd, str, (uint) strlen(str), system_charset_info_for_i_s)
+    Item_string(thd, str, (uint) strlen(str), system_charset_info)
   { }
 };
 
@@ -4960,14 +4955,14 @@ public:
 
 class Item_static_string_func :public Item_string
 {
-  const Lex_ident_routine func_name;
+  const LEX_CSTRING func_name;
 public:
-  Item_static_string_func(THD *thd, const Lex_ident_routine &name_par,
+  Item_static_string_func(THD *thd, const LEX_CSTRING &name_par,
                           const LEX_CSTRING &str, CHARSET_INFO *cs,
                           Derivation dv= DERIVATION_COERCIBLE):
     Item_string(thd, LEX_CSTRING({NullS,0}), str, cs, dv), func_name(name_par)
   {}
-  Item_static_string_func(THD *thd, const Lex_ident_routine &name_par,
+  Item_static_string_func(THD *thd, const LEX_CSTRING &name_par,
                           const String *str,
                           CHARSET_INFO *tocs, uint *conv_errors,
                           Derivation dv, my_repertoire_t repertoire):
@@ -4976,7 +4971,7 @@ public:
   {}
   Item *safe_charset_converter(THD *thd, CHARSET_INFO *tocs) override
   {
-    return const_charset_converter(thd, tocs, true, func_name);
+    return const_charset_converter(thd, tocs, true, func_name.str);
   }
 
   void print(String *str, enum_query_type) override
@@ -5891,9 +5886,9 @@ public:
   {
     return ref ? (*ref)->real_item() : this;
   }
-  const Type_extra_attributes type_extra_attributes() const override
+  const TYPELIB *get_typelib() const override
   {
-    return ref ? (*ref)->type_extra_attributes() : Type_extra_attributes();
+    return ref ? (*ref)->get_typelib() : NULL;
   }
 
   bool walk(Item_processor processor, bool walk_subquery, void *arg) override
@@ -7337,12 +7332,6 @@ public:
 
   const Type_handler *type_handler() const override
   { return Type_handler_hybrid_field_type::type_handler(); }
-  const Type_extra_attributes type_extra_attributes() const override
-  {
-    DBUG_ASSERT(fixed());
-    return example ? example->type_extra_attributes() :
-                     Type_extra_attributes();
-  }
   Field *create_tmp_field_ex(MEM_ROOT *root, TABLE *table, Tmp_field_src *src,
                              const Tmp_field_param *param) override
   {
@@ -7875,17 +7864,15 @@ public:
   Item_type_holder do not need cleanup() because its time of live limited by
   single SP/PS execution.
 */
-class Item_type_holder: public Item,
-                        public Type_handler_hybrid_field_type,
-                        public Type_extra_attributes
+class Item_type_holder: public Item, public Type_handler_hybrid_field_type
 {
+protected:
+  const TYPELIB *enum_set_typelib;
 public:
   Item_type_holder(THD *thd, Item *item, const Type_handler *handler,
-                   const Type_all_attributes *attr,
-                   bool maybe_null_arg)
-   :Item(thd),
-    Type_handler_hybrid_field_type(handler),
-    Type_extra_attributes(attr->type_extra_attributes())
+                   const Type_all_attributes *attr, bool maybe_null_arg)
+   :Item(thd), Type_handler_hybrid_field_type(handler),
+    enum_set_typelib(attr->get_typelib())
   {
     name= item->name;
     Type_std_attributes::set(*attr);
@@ -7905,14 +7892,7 @@ public:
   }
 
   Type type() const override { return TYPE_HOLDER; }
-  Type_extra_attributes *type_extra_attributes_addr() override
-  {
-    return this;
-  }
-  const Type_extra_attributes type_extra_attributes() const override
-  {
-    return *this;
-  }
+  const TYPELIB *get_typelib() const override { return enum_set_typelib; }
   /*
     When handling a query like this:
       VALUES ('') UNION VALUES( _utf16 0x0020 COLLATE utf16_bin);

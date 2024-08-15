@@ -393,8 +393,7 @@ public:
   bool check_partition_field_length();
   bool init_column_part(THD *thd);
   bool add_column_list_value(THD *thd, Item *item);
-  partition_element *get_part_elem(const Lex_ident_partition &partition_name,
-                                   char *file_name,
+  partition_element *get_part_elem(const char *partition_name, char *file_name,
                                    size_t file_name_size, uint32 *part_id);
   void report_part_expr_error(bool use_subpart_expr);
   bool has_same_partitioning(partition_info *new_part_info);
@@ -527,13 +526,11 @@ void partition_info::vers_update_el_ids()
 }
 
 
-static inline
-Lex_ident_partition make_partition_name(char *move_ptr, uint i)
+inline
+bool make_partition_name(char *move_ptr, uint i)
 {
   int res= snprintf(move_ptr, MAX_PART_NAME_SIZE + 1, "p%u", i);
-  return res < 0 || res > MAX_PART_NAME_SIZE ?
-         Lex_ident_partition() :
-         Lex_ident_partition(move_ptr, (size_t) res);
+  return res < 0 || res > MAX_PART_NAME_SIZE;
 }
 
 
@@ -552,16 +549,15 @@ uint partition_info::next_part_no(uint new_parts) const
   for (uint cur_part= 0; cur_part < new_parts; ++cur_part, ++suffix)
   {
     uint32 cur_suffix= suffix;
-    Lex_ident_partition part_name_ls(make_partition_name(part_name, suffix));
-    if (!part_name_ls.str)
+    if (make_partition_name(part_name, suffix))
       return 0;
     partition_element *el;
     it.rewind();
     while ((el= it++))
     {
-      if (el->partition_name.streq(part_name_ls))
+      if (0 == my_strcasecmp(&my_charset_latin1, el->partition_name, part_name))
       {
-        if (!(part_name_ls= make_partition_name(part_name, ++suffix)).str)
+        if (make_partition_name(part_name, ++suffix))
           return 0;
         it.rewind();
       }

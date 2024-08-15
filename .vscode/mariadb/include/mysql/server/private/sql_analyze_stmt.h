@@ -236,12 +236,6 @@ public:
       ? static_cast<double>(r_rows) / static_cast<double>(r_scans)
       : 0;
   }
-  double get_avg_rows_after_where() const
-  {
-    return r_scans
-      ? static_cast<double>(r_rows_after_where) / static_cast<double>(r_scans)
-      : 0;
-  }
 
   double get_filtered_after_where() const
   {

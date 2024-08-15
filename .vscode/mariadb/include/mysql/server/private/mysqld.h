@@ -20,7 +20,6 @@
 #include "sql_basic_types.h"			/* query_id_t */
 #include "sql_mode.h"                           /* Sql_mode_dependency */
 #include "sql_plugin.h"
-#include "lex_ident.h"
 #include "sql_bitmap.h"                         /* Bitmap */
 #include "my_decimal.h"                         /* my_decimal */
 #include "mysql_com.h"                     /* SERVER_VERSION_LENGTH */
@@ -80,9 +79,7 @@ void close_connection(THD *thd, uint sql_errno= 0);
 void handle_connection_in_main_thread(CONNECT *thd);
 void create_thread_to_handle_connection(CONNECT *connect);
 void unlink_thd(THD *thd);
-void refresh_status_legacy(THD *thd);
-void refresh_session_status(THD *thd);
-void refresh_global_status();
+void refresh_status(THD *thd);
 bool is_secure_file_path(char *path);
 extern void init_net_server_extension(THD *thd);
 extern void handle_accepted_socket(MYSQL_SOCKET new_sock, MYSQL_SOCKET sock);
@@ -92,7 +89,6 @@ extern void ssl_acceptor_stats_update(int sslaccept_ret);
 extern int reinit_ssl();
 
 extern "C" MYSQL_PLUGIN_IMPORT CHARSET_INFO *system_charset_info;
-extern "C" MYSQL_PLUGIN_IMPORT CHARSET_INFO *system_charset_info_for_i_s;
 extern MYSQL_PLUGIN_IMPORT CHARSET_INFO *files_charset_info ;
 extern MYSQL_PLUGIN_IMPORT CHARSET_INFO *national_charset_info;
 extern MYSQL_PLUGIN_IMPORT CHARSET_INFO *table_alias_charset;
@@ -220,8 +216,6 @@ extern char log_error_file[FN_REFLEN], *opt_tc_log_file, *opt_ddl_recovery_file;
 extern const double log_10[309];
 extern ulonglong keybuff_size;
 extern ulonglong thd_startup_options;
-extern ulonglong global_max_tmp_space_usage;
-extern Atomic_counter<ulonglong> global_tmp_space_used;
 extern my_thread_id global_thread_id;
 extern ulong binlog_cache_use, binlog_cache_disk_use;
 extern ulong binlog_stmt_cache_use, binlog_stmt_cache_disk_use;
@@ -280,7 +274,7 @@ extern ulong executed_events;
 extern char language[FN_REFLEN];
 extern "C" MYSQL_PLUGIN_IMPORT ulong server_id;
 extern ulong concurrency;
-extern time_t server_start_time;
+extern time_t server_start_time, flush_status_time;
 extern char *opt_mysql_tmpdir, mysql_charsets_dir[];
 extern size_t mysql_unpacked_real_data_home_len;
 extern MYSQL_PLUGIN_IMPORT MY_TMPDIR mysql_tmpdir_list;
@@ -288,7 +282,7 @@ extern const char *first_keyword, *delayed_user, *slave_user;
 extern MYSQL_PLUGIN_IMPORT const char  *my_localhost;
 extern MYSQL_PLUGIN_IMPORT const char **errmesg;			/* Error messages */
 extern const char *myisam_recover_options_str;
-extern const Lex_ident_column in_left_expr_name, in_additional_cond, in_having_cond;
+extern const LEX_CSTRING in_left_expr_name, in_additional_cond, in_having_cond;
 extern const LEX_CSTRING NULL_clex_str;
 extern const LEX_CSTRING error_clex_str;
 extern SHOW_VAR status_vars[];
@@ -975,6 +969,12 @@ extern "C" void unireg_abort(int exit_code) __attribute__((noreturn));
 extern "C" void unireg_clear(int exit_code);
 #define unireg_abort(exit_code) do { unireg_clear(exit_code); DBUG_RETURN(exit_code); } while(0)
 #endif
+
+inline void table_case_convert(char * name, uint length)
+{
+  if (lower_case_table_names)
+    files_charset_info->casedn(name, length, name, length);
+}
 
 extern void set_server_version(char *buf, size_t size);
 

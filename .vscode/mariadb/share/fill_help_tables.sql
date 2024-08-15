@@ -22,7 +22,7 @@
 
 --     mysql -u root -p mysql < file_name
 
-SET NAMES utf8mb3 COLLATE utf8mb3_general_ci;
+set names 'utf8';
 
 set sql_log_bin = 0;
 

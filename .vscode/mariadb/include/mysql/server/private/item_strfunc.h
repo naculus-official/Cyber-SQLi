@@ -421,7 +421,7 @@ public:
   String *val_str(String *) override;
   bool fix_length_and_dec(THD *thd) override
   {
-    collation.set(system_charset_info_for_i_s);
+    collation.set(system_charset_info);
     max_length= MAX_BLOB_WIDTH;
     set_maybe_null();
     return FALSE;
@@ -1154,17 +1154,17 @@ class Item_func_sysconst :public Item_str_func
 {
 public:
   Item_func_sysconst(THD *thd): Item_str_func(thd)
-  { collation.set(system_charset_info_for_i_s, DERIVATION_SYSCONST); }
+  { collation.set(system_charset_info,DERIVATION_SYSCONST); }
   Item *safe_charset_converter(THD *thd, CHARSET_INFO *tocs) override;
   /*
     Used to create correct Item name in new converted item in
     safe_charset_converter, return string representation of this function
     call
   */
-  virtual const Lex_ident_routine fully_qualified_func_name() const = 0;
+  virtual const char *fully_qualified_func_name() const = 0;
   bool check_vcol_func_processor(void *arg) override
   {
-    return mark_unsupported_function(fully_qualified_func_name().str, arg,
+    return mark_unsupported_function(fully_qualified_func_name(), arg,
                                      VCOL_SESSION_FUNC);
   }
   bool const_item() const override;
@@ -1178,7 +1178,7 @@ public:
   String *val_str(String *) override;
   bool fix_length_and_dec(THD *thd) override
   {
-    fix_char_length(NAME_CHAR_LEN);
+    max_length= NAME_CHAR_LEN * system_charset_info->mbmaxlen;
     set_maybe_null();
     return FALSE;
   }
@@ -1187,8 +1187,8 @@ public:
     static LEX_CSTRING name= {STRING_WITH_LEN("database") };
     return name;
   }
-  const Lex_ident_routine fully_qualified_func_name() const override
-  { return Lex_ident_routine("database()"_LEX_CSTRING); }
+  const char *fully_qualified_func_name() const override
+  { return "database()"; }
   Item *do_get_copy(THD *thd) const override
   { return get_item_copy<Item_func_database>(thd, this); }
 };
@@ -1204,15 +1204,15 @@ public:
     static LEX_CSTRING name= {STRING_WITH_LEN("SQLERRM") };
     return name;
   }
-  const Lex_ident_routine fully_qualified_func_name() const override
-  { return Lex_ident_routine("SQLERRM"_LEX_CSTRING); }
+  const char *fully_qualified_func_name() const override
+  { return "SQLERRM"; }
   void print(String *str, enum_query_type query_type) override
   {
     str->append(func_name_cstring());
   }
   bool fix_length_and_dec(THD *thd) override
   {
-    fix_char_length(512);
+    max_length= 512 * system_charset_info->mbmaxlen;
     null_value= false;
     base_flags&= ~item_base_t::MAYBE_NULL;
     return FALSE;
@@ -1230,7 +1230,7 @@ protected:
 public:
   Item_func_user(THD *thd): Item_func_sysconst(thd)
   {
-    str_value.set("", 0, collation.collation);
+    str_value.set("", 0, system_charset_info);
   }
   String *val_str(String *) override
   {
@@ -1249,8 +1249,8 @@ public:
     static LEX_CSTRING name= {STRING_WITH_LEN("user") };
     return name;
   }
-  const Lex_ident_routine fully_qualified_func_name() const override
-  { return Lex_ident_routine("user()"_LEX_CSTRING); }
+  const char *fully_qualified_func_name() const override
+  { return "user()"; }
   int save_in_field(Field *field, bool no_conversions) override
   {
     return save_str_value_in_field(field, &str_value);
@@ -1273,12 +1273,12 @@ public:
     static LEX_CSTRING name= {STRING_WITH_LEN("current_user") };
     return name;
   }
-  const Lex_ident_routine fully_qualified_func_name() const override
-  { return Lex_ident_routine("current_user()"_LEX_CSTRING); }
+  const char *fully_qualified_func_name() const override
+  { return "current_user()"; }
   bool check_vcol_func_processor(void *arg) override
   {
     context= 0;
-    return mark_unsupported_function(fully_qualified_func_name().str, arg,
+    return mark_unsupported_function(fully_qualified_func_name(), arg,
                                      VCOL_SESSION_FUNC);
   }
 };
@@ -1304,8 +1304,8 @@ public:
     static LEX_CSTRING name= {STRING_WITH_LEN("current_role") };
     return name;
   }
-  const Lex_ident_routine fully_qualified_func_name() const override
-  { return Lex_ident_routine("current_role()"_LEX_CSTRING); }
+  const char *fully_qualified_func_name() const override
+  { return "current_role()"; }
   String *val_str(String *) override
   {
     DBUG_ASSERT(fixed());
@@ -1314,7 +1314,7 @@ public:
   bool check_vcol_func_processor(void *arg) override
   {
     context= 0;
-    return mark_unsupported_function(fully_qualified_func_name().str, arg,
+    return mark_unsupported_function(fully_qualified_func_name(), arg,
                                      VCOL_SESSION_FUNC);
   }
   Item *do_get_copy(THD *thd) const override
@@ -1903,13 +1903,13 @@ public:
   Item_func_conv_charset(THD *thd, Item *a, CHARSET_INFO *cs):
     Item_str_func(thd, a)
   {
-    collation= DTCollation::string_typecast(cs);
+    collation.set(cs, DERIVATION_IMPLICIT);
     use_cached_value= 0; safe= 0;
   }
   Item_func_conv_charset(THD *thd, Item *a, CHARSET_INFO *cs, bool cache_if_const):
     Item_str_func(thd, a)
   {
-    collation= DTCollation::string_typecast(cs);
+    collation.set(cs, DERIVATION_IMPLICIT);
     if (cache_if_const && args[0]->can_eval_in_optimize())
     {
       uint errors= 0;
@@ -2026,7 +2026,7 @@ public:
   Item_func_expr_str_metadata(THD *thd, Item *a): Item_str_func(thd, a) { }
   bool fix_length_and_dec(THD *thd) override
   {
-     collation.set(system_charset_info_for_i_s, DERIVATION_SYSCONST);
+     collation.set(system_charset_info);
      max_length= 64 * collation.collation->mbmaxlen; // should be enough
      base_flags&= ~item_base_t::MAYBE_NULL;
      return FALSE;

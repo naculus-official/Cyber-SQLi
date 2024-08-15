@@ -53,7 +53,7 @@ my $cwd = cwd();
 my $basedir;
 
 my $socket  = '/tmp/mysql.sock';
-my $version = '11.5.2';
+my $version = '11.4.3';
 
 sub which
 {
@@ -149,7 +149,7 @@ sub quote_options {
 my $me = get_full_path($0);
 $basedir = dirname(dirname($me)); # Remove "/bin/mysql_config" part
 
-my $ldata   = 'C:/Program Files/MariaDB 11.5/data';
+my $ldata   = 'C:/Program Files/MariaDB 11.4/data';
 my $execdir = 'C:/Program Files/MariaDB/bin';
 my $bindir  = 'C:/Program Files/MariaDB/bin';
 

@@ -35,6 +35,7 @@
 #include "structs.h"                            /* SHOW_COMP_OPTION */
 #include "sql_array.h"          /* Dynamic_array<> */
 #include "mdl.h"
+#include "vers_string.h"
 #include "ha_handler_stats.h"
 #include "optimizer_costs.h"
 
@@ -72,28 +73,10 @@ class select_result;
 #define HA_ADMIN_TRY_ALTER       -7
 #define HA_ADMIN_WRONG_CHECKSUM  -8
 #define HA_ADMIN_NOT_BASE_TABLE  -9
-/*
-  Table needs to be rebuilt with handler::repair.
-  For example to fix a changed index sort order.
-  Rows with duplicated unique key values should be deleted.
-  For engines that do not support REPAIR, ALTER TABLE FORCE
-  is used.
-*/
 #define HA_ADMIN_NEEDS_UPGRADE  -10
-/*
-  Needs rebuild with ALTER TABLE ... FORCE.
-  Will recreate the .frm file with a new version to remove old
-  incompatibilities.
- */
 #define HA_ADMIN_NEEDS_ALTER    -11
-/*
-  Needs rebuild with ALTER TABLE ... FORCE, ALGORITHM=COPY
-  This will take care of data conversions like MySQL JSON format
-  and updating version tables timestamps.
- */
-#define HA_ADMIN_NEEDS_DATA_CONVERSION  -12
-#define HA_ADMIN_NEEDS_CHECK    -13
-#define HA_ADMIN_COMMIT_ERROR   -14
+#define HA_ADMIN_NEEDS_CHECK    -12
+#define HA_ADMIN_COMMIT_ERROR   -13
 
 /**
    Return values for check_if_supported_inplace_alter().
@@ -1098,7 +1081,6 @@ enum enum_schema_tables
   SCH_PROCEDURES,
   SCH_SCHEMATA,
   SCH_SCHEMA_PRIVILEGES,
-  SCH_SEQUENCES,
   SCH_SESSION_STATUS,
   SCH_SESSION_VARIABLES,
   SCH_STATISTICS,
@@ -1110,7 +1092,6 @@ enum enum_schema_tables
   SCH_TABLE_NAMES,
   SCH_TABLE_PRIVILEGES,
   SCH_TRIGGERS,
-  SCH_USERS,
   SCH_USER_PRIVILEGES,
   SCH_VIEWS,
   SCH_ENUM_SIZE
@@ -2122,7 +2103,7 @@ struct Table_period_info: Sql_alloc
     constr(NULL),
     unique_keys(0){}
 
-  Lex_ident_column name;
+  Lex_ident name;
 
   struct start_end_t
   {
@@ -2130,8 +2111,8 @@ struct Table_period_info: Sql_alloc
     start_end_t(const LEX_CSTRING& _start, const LEX_CSTRING& _end) :
       start(_start),
       end(_end) {}
-    Lex_ident_column start;
-    Lex_ident_column end;
+    Lex_ident start;
+    Lex_ident end;
   };
   start_end_t period;
   bool create_if_not_exists;
@@ -2141,15 +2122,15 @@ struct Table_period_info: Sql_alloc
   bool is_set() const
   {
     DBUG_ASSERT(bool(period.start) == bool(period.end));
-    return (bool) period.start;
+    return period.start;
   }
 
-  void set_period(const Lex_ident_column &start, const Lex_ident_column &end)
+  void set_period(const Lex_ident& start, const Lex_ident& end)
   {
     period.start= start;
     period.end= end;
   }
-  bool check_field(const Create_field* f, const Lex_ident_column &f_name) const;
+  bool check_field(const Create_field* f, const Lex_ident& f_name) const;
 };
 
 struct Vers_parse_info: public Table_period_info
@@ -2164,20 +2145,20 @@ struct Vers_parse_info: public Table_period_info
   Table_period_info::start_end_t as_row;
 
   friend struct Table_scope_and_contents_source_st;
-  void set_start(const Lex_ident_column field_name)
+  void set_start(const LEX_CSTRING field_name)
   {
     as_row.start= field_name;
     period.start= field_name;
   }
-  void set_end(const Lex_ident_column field_name)
+  void set_end(const LEX_CSTRING field_name)
   {
     as_row.end= field_name;
     period.end= field_name;
   }
 
 protected:
-  bool is_start(const LEX_CSTRING &name) const;
-  bool is_end(const LEX_CSTRING &name) const;
+  bool is_start(const char *name) const;
+  bool is_end(const char *name) const;
   bool is_start(const Create_field &f) const;
   bool is_end(const Create_field &f) const;
   bool fix_implicit(THD *thd, Alter_info *alter_info);
@@ -2186,21 +2167,21 @@ protected:
     return as_row.start || as_row.end || period.start || period.end;
   }
   bool need_check(const Alter_info *alter_info) const;
-  bool check_conditions(const Lex_ident_table &table_name,
-                        const Lex_ident_db &db) const;
-  bool create_sys_field(THD *thd, const Lex_ident_column &field_name,
+  bool check_conditions(const Lex_table_name &table_name,
+                        const Lex_table_name &db) const;
+  bool create_sys_field(THD *thd, const char *field_name,
                         Alter_info *alter_info, int flags);
 
 public:
-  static const Lex_ident_column default_start;
-  static const Lex_ident_column default_end;
+  static const Lex_ident default_start;
+  static const Lex_ident default_end;
 
   bool fix_alter_info(THD *thd, Alter_info *alter_info,
                        HA_CREATE_INFO *create_info, TABLE *table);
   bool fix_create_like(Alter_info &alter_info, HA_CREATE_INFO &create_info,
                        TABLE_LIST &src_table, TABLE_LIST &table);
-  bool check_sys_fields(const Lex_ident_table &table_name,
-                        const Lex_ident_db &db, Alter_info *alter_info) const;
+  bool check_sys_fields(const Lex_table_name &table_name,
+                        const Lex_table_name &db, Alter_info *alter_info) const;
 
   /**
      At least one field was specified 'WITH/WITHOUT SYSTEM VERSIONING'.
@@ -2271,12 +2252,6 @@ struct Table_scope_and_contents_source_pod_st // For trivial members
   enum_stats_auto_recalc stats_auto_recalc;
   bool varchar;                         ///< 1 if table has a VARCHAR
   bool sequence;                        // If SEQUENCE=1 was used
-  /*
-    True if we are using OPTIMIZE TABLE, REPAIR TABLE or ALTER TABLE FORCE
-    in which case the 'new' table should have identical storage layout
-    as the original.
-  */
-  bool recreate_identical_table;
 
   List<Virtual_column_info> *check_constraint_list;
 
@@ -2328,8 +2303,8 @@ struct Table_scope_and_contents_source_st:
                          const TABLE_LIST &create_table);
   bool fix_period_fields(THD *thd, Alter_info *alter_info);
   bool check_fields(THD *thd, Alter_info *alter_info,
-                    const Lex_ident_table &table_name,
-                    const Lex_ident_db &db,
+                    const Lex_table_name &table_name,
+                    const Lex_table_name &db,
                     int select_count= 0);
   bool check_period_fields(THD *thd, Alter_info *alter_info);
 
@@ -2338,8 +2313,8 @@ struct Table_scope_and_contents_source_st:
                               const TABLE_LIST &create_table);
 
   bool vers_check_system_fields(THD *thd, Alter_info *alter_info,
-                                const Lex_ident_table &table_name,
-                                const Lex_ident_db &db,
+                                const Lex_table_name &table_name,
+                                const Lex_table_name &db,
                                 int select_count= 0);
 };
 
@@ -3171,7 +3146,7 @@ public:
                                  const Lex_cstring &db_and_table)
   {
     DBUG_ASSERT(homedir.length + db_and_table.length <= max_data_size());
-    copy(homedir);
+    copy_bin(homedir);
     append_casedn(db_and_table_charset, db_and_table);
     return *this;
   }
@@ -3237,13 +3212,7 @@ protected:
 
   ha_rows estimation_rows_to_insert;
   handler *lookup_handler;
-  /*
-    Statistics for the query.  Prefer to use the handler_stats pointer
-    below rather than this object directly as the clone() method will
-    modify how stats are accounted by adjusting the handler_stats
-    pointer.  Referring to active_handler_stats directly will yield
-    surprising and possibly incorrect results.
-  */
+  /* Statistics for the query. Updated if handler_stats.in_use is set */
   ha_handler_stats active_handler_stats;
   void set_handler_stats();
 public:
@@ -3326,7 +3295,9 @@ public:
     inserter.
   */
   /* Statistics  variables */
-  struct rows_stats rows_stats;
+  ulonglong rows_read;
+  ulonglong rows_tmp_read;
+  ulonglong rows_changed;
   /* One bigger than needed to avoid to test if key == MAX_KEY */
   ulonglong index_rows_read[MAX_KEY+1];
   ha_copy_info copy_info;
@@ -3638,8 +3609,6 @@ protected:
 public:
   int check_collation_compatibility();
   int check_long_hash_compatibility() const;
-  int check_versioned_compatibility() const;
-  int check_versioned_compatibility(uint version) const;
   int ha_check_for_upgrade(HA_CHECK_OPT *check_opt);
   /** to be actually called to get 'check()' functionality*/
   int ha_check(THD *thd, HA_CHECK_OPT *check_opt);
@@ -3712,7 +3681,7 @@ public:
   { DBUG_ASSERT(false); return(false); }
   void reset_statistics()
   {
-    bzero(&rows_stats, sizeof(rows_stats));
+    rows_read= rows_changed= rows_tmp_read= 0;
     bzero(index_rows_read, sizeof(index_rows_read));
     bzero(&copy_info, sizeof(copy_info));
   }
@@ -4262,9 +4231,9 @@ protected:
   inline void update_rows_read()
   {
     if (likely(!internal_tmp_table))
-      rows_stats.read++;
+      rows_read++;
     else
-      rows_stats.tmp_read++;
+      rows_tmp_read++;
   }
   inline void update_index_statistics()
   {
@@ -4804,8 +4773,6 @@ public:
    in_range_check_pushed_down= false;
  }
 
- inline void assert_icp_limitations(uchar *buf);
-
  virtual void cancel_pushed_rowid_filter()
  {
    pushed_rowid_filter= NULL;
@@ -5341,7 +5308,7 @@ private:
   virtual void release_auto_increment() { return; };
   /** admin commands - called from mysql_admin_table */
   virtual int check_for_upgrade(HA_CHECK_OPT *check_opt)
-  { return HA_ADMIN_OK; }
+  { return 0; }
   virtual int check(THD* thd, HA_CHECK_OPT* check_opt)
   { return HA_ADMIN_NOT_IMPLEMENTED; }
 
@@ -5823,6 +5790,7 @@ bool non_existing_table_error(int error);
 uint ha_count_rw_2pc(THD *thd, bool all);
 uint ha_check_and_coalesce_trx_read_only(THD *thd, Ha_trx_info *ha_list,
                                          bool all);
+
 inline void Cost_estimate::reset(handler *file)
 {
   reset();
