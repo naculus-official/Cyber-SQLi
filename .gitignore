@@ -1,0 +1,4 @@
+.vscode/mariadb/data/*
+.vscode/sql.log
+.vscode/http.log
+.vscode/http.log
