@@ -8,6 +8,6 @@
         }
     },
     "terminal.integrated.env.windows": {
-        "PATH": "${workspaceFolder}\\.vscode\\php;${env:PATH}"
+        "PATH": "${workspaceFolder}\\.vscode\\php;${workspaceFolder}\\.vscode\\mariadb\\bin;${env:PATH}"
     }
 }
